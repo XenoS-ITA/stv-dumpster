@@ -90,7 +90,7 @@ function StartSearching(dumpster)
     end
 
     ClearPedTasks(ped)
-    TriggerServerEvent("stv:giveDumpsterReward")
+    TriggerServerEvent("stv-dumpster:GiveReward")
     
     timer[dumpster] = 10
     canSearch = true

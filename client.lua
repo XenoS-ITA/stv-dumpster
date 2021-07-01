@@ -1,12 +1,5 @@
-ESX = nil
-
-local searched = {3423423424}
-local canSearch = true
-local dumpsters = {218085040, 666561306, -58485588, -206690185, 1511880420, 682791951}
-local searchTime = 0
-local dumpsterTrigger = false
-local ped = GetPlayerPed(-1)
-
+-- ESX
+local ESX = nil
 Citizen.CreateThread(function()
     while ESX == nil do
         TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
@@ -15,97 +8,64 @@ Citizen.CreateThread(function()
 end)
 
 
+local searched = {}
+local timer = {}
+local canSearch = true
+local dumpsters = {218085040, 666561306, -58485588, -206690185, 1511880420, 682791951}
 
-
-Citizen.CreateThread(function()
-    local dumspterModel = {
-        218085040,
-        666561306,
-        -58485588,
-        -206690185,
-        1511880420,
-        682791951,
-    }
-
-    exports['bt-target']:AddTargetModel(dumspterModel, {
-        options = {
-            {
-                event = 'dumpsterTrigger',
-                icon = 'fas fa-dumpster',
-                label = 'Search Dumpster'
-            },
+-- bt-target
+exports['bt-target']:AddTargetModel(dumpsters, {
+    options = {
+        {
+            event = 'stv-dumpster:SearchDumpster',
+            icon = 'fas fa-dumpster',
+            label = 'Search Dumpster'
         },
-        job = {'all'},
-        distance = 1.5
-    })
-end)
+    },
+    job = {'all'},
+    distance = 1.5
+})
 
-RegisterNetEvent('dumpsterTrigger')
-AddEventHandler('dumpsterTrigger', function()
-    dumpsterTrigger = true
-end)
+-- Callback of the bt-target
+RegisterNetEvent('stv-dumpster:SearchDumpster')
+AddEventHandler('stv-dumpster:SearchDumpster', function()
+    local pos = GetEntityCoords(PlayerPedId())
 
+    -- If it cannot search in the dumpster simply return 0, so that the code more ahead does not come executed
+    if not canSearch then
+        return
+    end
 
+    for i = 1, #dumpsters do
+        local dumpster = GetClosestObjectOfType(pos.x, pos.y, pos.z, 1.0, dumpsters[i], false, false, false)
 
-Citizen.CreateThread(function()
-    while true do
-        Citizen.Wait(100)
-        if canSearch then
-            local ped = GetPlayerPed(-1)
-            local pos = GetEntityCoords(ped)
-            local dumpsterFound = false
-
-            for i = 1, #dumpsters do
-                local dumpster = GetClosestObjectOfType(pos.x, pos.y, pos.z, 1.0, dumpsters[i], false, false, false)
-                local dumpPos = GetEntityCoords(dumpster)
-
-                if dumpsterTrigger == true then
-                    for i = 1, #searched do
-                        if searched[i] == dumpster then
-                            dumpsterFound = true
-                        end
-                        if i == #searched and dumpsterFound then
-                            exports['mythic_notify']:DoHudText('error', 'This dumpster has already been searched')
-                            dumpsterTrigger = false
-                        elseif i == #searched and not dumpsterFound then
-                            exports['mythic_notify']:DoHudText('inform', 'You begin to search the dumpster')
-                            startSearching(searchTime, 'amb@prop_human_bum_bin@base', 'base', 'stv:giveDumpsterReward')
-                            TriggerServerEvent('stv:startDumpsterTimer', dumpster)
-                            table.insert(searched, dumpster)
-                            dumpsterTrigger = false
-                        end
-                    end
-                end
+        if dumpster ~= 0 then
+            -- If has already been searched
+            if searched[dumpster] then
+                exports['mythic_notify']:DoHudText('error', 'This dumpster has already been searched')
+            else -- If is new
+                exports['mythic_notify']:DoHudText('inform', 'You begin to search the dumpster')
+                
+                StartSearching(dumpster)
+                searched[dumpster] = true
             end
+
+            break -- We have already found the dumpster, so we stop the loop to not waste resources
         end
     end
 end)
 
-
-
-RegisterNetEvent('stv:removeDumpster')
-AddEventHandler('stv:removeDumpster', function(object)
-    for i = 1, #searched do
-        if searched[i] == object then
-            table.remove(searched, i)
-        end
-    end
-end)
-
--- Functions
-
-function startSearching(time, dict, anim, cb)
-    local animDict = dict
-    local animation = anim
-    local ped = GetPlayerPed(-1)
-
+function StartSearching(dumpster)
     canSearch = false
+    local ped = PlayerPedId()
 
-    RequestAnimDict(animDict)
-    while not HasAnimDictLoaded(animDict) do
-        Citizen.Wait(0)
+    if not HasAnimDictLoaded("amb@prop_human_bum_bin@base") then
+        RequestAnimDict(animDict)
+        while not HasAnimDictLoaded(animDict) do
+            Citizen.Wait(0)
+        end
     end
-    --exports['progressBars']:startUI(time, "Searching Dumpster") 
+
     exports['mythic_progbar']:Progress({
         name = "unique_action_name",
         duration = 30000,
@@ -124,12 +84,28 @@ function startSearching(time, dict, anim, cb)
         },
     })
     Citizen.Wait(30000)
-    DisableControlAction(0, 245) --309
-    DisableControlAction(0, 309)
-    local ped = GetPlayerPed(-1)
+    Wait(0)
+    if not DoesEntityExist(ped) then
+        ped = PlayerPedId()
+    end
 
-    Wait(time)
     ClearPedTasks(ped)
+
+    timer[dumpster] = 10
     canSearch = true
-    TriggerServerEvent(cb)
 end
+
+-- Timer
+Citizen.CreateThread(function()
+    while true do
+        for entity,time in pairs(timer) do
+            if time == 0 then
+                searched[entity] = false
+                timer[entity] = nil
+            else
+                time = time - 1
+            end
+        end
+        Citizen.Wait(60000)
+    end
+end)
